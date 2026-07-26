@@ -1,9 +1,12 @@
 type UnknownMessage = {
+  id?: unknown
+  role?: unknown
   content?: unknown
   text?: unknown
   message?: unknown
   delta?: unknown
   choices?: unknown
+  messages?: unknown
 }
 
 const stringifyText = (value: unknown): string => {
@@ -38,6 +41,10 @@ export const extractMessageText = (value: unknown): string => {
 
     if (Array.isArray(message.choices)) {
       return message.choices.map(extractMessageText).filter(Boolean).join('\n')
+    }
+
+    if (Array.isArray(message.messages)) {
+      return message.messages.map(extractMessageText).filter(Boolean).join('\n')
     }
 
     return ''

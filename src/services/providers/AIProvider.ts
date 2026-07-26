@@ -38,11 +38,25 @@ export async function* readProxyStream(response: Response): AsyncGenerator<ChatC
   if (!response.body) throw new Error('当前浏览器不支持流式读取。')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
+  let buffer = ''
   while (true) {
     const { done, value } = await reader.read()
-    if (done) break
-    const chunk = decoder.decode(value)
-    for (const line of chunk.split('\n')) {
+    if (done) {
+      if (buffer.trim()) {
+        const payload = buffer.startsWith('data:') ? buffer.slice(5).trim() : buffer.trim()
+        if (payload === '[DONE]') {
+          yield { content: '', done: true }
+        } else {
+          const content = extractMessageText(payload)
+          if (content) yield { content }
+        }
+      }
+      break
+    }
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
       if (!line.startsWith('data:')) continue
       const payload = line.slice(5).trim()
       if (payload === '[DONE]') {

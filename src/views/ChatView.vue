@@ -103,6 +103,13 @@ const regenerate = async () => {
   const lastUser = [...chat.messages].reverse().find((message) => message.role === 'user')
   if (lastUser) await chat.sendMessage(displayContent(lastUser))
 }
+
+const clearCurrentCharacterChat = async () => {
+  if (!character.value) return
+  const confirmed = window.confirm('是否删除当前角色聊天记录？')
+  if (!confirmed) return
+  await chat.clearCharacterChat(character.value.id)
+}
 </script>
 
 <template>
@@ -144,7 +151,7 @@ const regenerate = async () => {
       <div ref="scrollEl" class="min-h-0 w-full max-w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-5 sm:px-4">
         <EmptyState v-if="!character" title="还没有可聊天的角色" description="请先创建角色。" />
         <EmptyState v-else-if="!app.canUseApi" title="AI 服务尚未连接" description="请先输入 API Key 并通过连接测试。" />
-        <EmptyState v-else-if="!chat.messages.length" title="开始一段新聊天" description="角色会严格依据资料、世界观、服装和记忆回答。" />
+        <EmptyState v-else-if="!chat.messages.length" title="暂无聊天记录" description="发送第一条消息后，这里会显示当前角色的聊天内容。" />
 
         <div v-else class="mx-auto grid w-full max-w-3xl gap-4">
           <article v-for="msg in chat.messages" :key="msg.id" :class="['flex min-w-0 gap-3', msg.role === 'user' ? 'justify-end' : 'justify-start']">
@@ -170,6 +177,7 @@ const regenerate = async () => {
             <span class="text-xs text-slate-500">{{ input.length }} / 6000</span>
             <div class="flex flex-wrap justify-end gap-2">
               <button class="btn-secondary px-3" type="button" @click="exportConversation">导出当前聊天</button>
+              <button class="btn-danger px-3" type="button" :disabled="!character || chat.generating" @click="clearCurrentCharacterChat">清除当前角色聊天记录</button>
               <button class="btn-secondary px-3" type="button" @click="regenerate"><RefreshCcw class="h-4 w-4" /> 重新生成</button>
               <button v-if="chat.generating" class="btn-danger" type="button" @click="chat.stop"><Square class="h-4 w-4" /> 停止生成</button>
               <button v-else class="btn-primary" type="button" :disabled="!app.canUseApi || !character || !input.trim()" @click="send"><Send class="h-4 w-4" /> 发送</button>

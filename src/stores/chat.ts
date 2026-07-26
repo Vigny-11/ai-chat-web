@@ -10,6 +10,12 @@ import type { ChatMessage, Conversation, Memory } from '@/types'
 import { createId, nowIso } from '@/utils/id'
 import { extractMessageText } from '@/utils/messageContent'
 
+type RawChatMessage = Partial<ChatMessage> & {
+  text?: unknown
+  message?: unknown
+  choices?: unknown
+}
+
 export const useChatStore = defineStore('chat', () => {
   const conversations = ref<Conversation[]>([])
   const messages = ref<ChatMessage[]>([])
@@ -19,18 +25,50 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref('')
   let controller: AbortController | null = null
 
-  const normalizeMessage = (message: ChatMessage, fallbackCharacterId = ''): ChatMessage | null => {
-    const content = extractMessageText(message.content)
-    const characterId = message.characterId || fallbackCharacterId
-    if (!characterId || (!content && !message.isGenerating)) return null
+  const normalizeMessage = (message: RawChatMessage | unknown, fallbackCharacterId = '', fallbackConversationId = ''): ChatMessage | null => {
+    const raw = typeof message === 'object' && message ? (message as RawChatMessage) : ({ content: message } as RawChatMessage)
+    const content = extractMessageText(raw.content ?? raw.text ?? raw.message ?? raw.choices ?? raw)
+    const characterId = raw.characterId || fallbackCharacterId
+    const conversationId = raw.conversationId || fallbackConversationId
+    const role = raw.role === 'system' || raw.role === 'user' || raw.role === 'assistant' ? raw.role : 'assistant'
+    if (!characterId || !conversationId || (!content && !raw.isGenerating)) return null
     return {
-      ...message,
+      ...raw,
+      id: raw.id || createId('msg'),
       characterId,
+      conversationId,
+      role,
       content,
+      createdAt: raw.createdAt || nowIso(),
+      updatedAt: raw.updatedAt || nowIso(),
     }
   }
 
+  const repairAllMessages = async () => {
+    const allConversations = await db.conversations.toArray()
+    const characterByConversation = new Map(allConversations.map((conversation) => [conversation.id, conversation.characterId]))
+    const allMessages = await db.messages.toArray()
+    const repaired: ChatMessage[] = []
+    const invalidIds: string[] = []
+
+    for (const message of allMessages) {
+      const fallbackCharacterId = characterByConversation.get(message.conversationId) || ''
+      const normalized = normalizeMessage(message, fallbackCharacterId, message.conversationId)
+      if (!normalized || normalized.characterId !== fallbackCharacterId || !normalized.content) {
+        invalidIds.push(message.id)
+        continue
+      }
+      if (normalized.content !== message.content || normalized.characterId !== message.characterId || normalized.role !== message.role) {
+        repaired.push(normalized)
+      }
+    }
+
+    if (invalidIds.length) await db.messages.bulkDelete(invalidIds)
+    if (repaired.length) await db.messages.bulkPut(repaired)
+  }
+
   const loadForCharacter = async (characterId: string) => {
+    await repairAllMessages()
     conversations.value = await db.conversations.where('characterId').equals(characterId).reverse().sortBy('updatedAt')
     memories.value = await db.memories.where('characterId').equals(characterId).toArray()
     const currentBelongsToCharacter = conversations.value.some((conversation) => conversation.id === activeConversationId.value)
@@ -95,6 +133,17 @@ export const useChatStore = defineStore('chat', () => {
     messages.value = []
   }
 
+  const clearCharacterChat = async (characterId: string) => {
+    await db.transaction('rw', db.conversations, db.messages, async () => {
+      const characterConversations = await db.conversations.where('characterId').equals(characterId).toArray()
+      await db.messages.where('characterId').equals(characterId).delete()
+      if (characterConversations.length) await db.conversations.bulkDelete(characterConversations.map((conversation) => conversation.id))
+    })
+    activeConversationId.value = ''
+    conversations.value = []
+    messages.value = []
+  }
+
   const removeMessage = async (id: string) => {
     await db.messages.delete(id)
     messages.value = messages.value.filter((item) => item.id !== id)
@@ -103,7 +152,8 @@ export const useChatStore = defineStore('chat', () => {
   const editMessage = async (id: string, content: string) => {
     const msg = await db.messages.get(id)
     if (!msg) return
-    await db.messages.put({ ...msg, content: extractMessageText(content) || content, isEdited: true, updatedAt: nowIso() })
+    const normalized = normalizeMessage({ ...msg, content: extractMessageText(content) || content, isEdited: true, updatedAt: nowIso() }, msg.characterId, msg.conversationId)
+    if (normalized) await db.messages.put(normalized)
     await loadMessages(msg.conversationId)
   }
 
@@ -120,7 +170,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!conversationId) conversationId = (await newConversation(character.id)).id
     const now = nowIso()
     const userContent = extractMessageText(content) || content
-    const userMsg: ChatMessage = {
+    const userMsg = normalizeMessage({
       id: createId('msg'),
       characterId: character.id,
       conversationId,
@@ -128,8 +178,8 @@ export const useChatStore = defineStore('chat', () => {
       content: userContent,
       createdAt: now,
       updatedAt: now,
-    }
-    const assistantMsg: ChatMessage = {
+    }, character.id, conversationId)
+    const assistantMsg = normalizeMessage({
       id: createId('msg'),
       characterId: character.id,
       conversationId,
@@ -139,7 +189,8 @@ export const useChatStore = defineStore('chat', () => {
       updatedAt: nowIso(),
       isGenerating: true,
       model: '默认模型',
-    }
+    }, character.id, conversationId)
+    if (!userMsg || !assistantMsg) throw new Error('聊天消息格式异常，请重试。')
     await db.messages.bulkAdd([userMsg, assistantMsg])
     messages.value.push(userMsg, assistantMsg)
     generating.value = true
@@ -165,14 +216,16 @@ export const useChatStore = defineStore('chat', () => {
       }
       assistantMsg.isGenerating = false
       assistantMsg.content = extractMessageText(final) || '我暂时不知道该如何回答。'
-      await db.messages.put({ ...assistantMsg, updatedAt: nowIso() })
+      const savedAssistant = normalizeMessage({ ...assistantMsg, updatedAt: nowIso() }, character.id, conversationId)
+      if (savedAssistant) await db.messages.put(savedAssistant)
       await db.conversations.update(conversationId, { updatedAt: nowIso(), lastMessageAt: nowIso(), title: conversations.value.find((c) => c.id === conversationId)?.title ?? content.slice(0, 18) })
       await maybeExtractMemory(character.id, conversationId, assistantMsg)
     } catch (err) {
       assistantMsg.isGenerating = false
       assistantMsg.isFailed = true
       assistantMsg.content = err instanceof DOMException && err.name === 'AbortError' ? '已停止生成。' : `生成失败：${err instanceof Error ? err.message : String(err)}`
-      await db.messages.put(assistantMsg)
+      const savedError = normalizeMessage(assistantMsg, character.id, conversationId)
+      if (savedError) await db.messages.put(savedError)
       error.value = assistantMsg.content
     } finally {
       generating.value = false
@@ -212,6 +265,7 @@ export const useChatStore = defineStore('chat', () => {
     renameConversation,
     deleteConversation,
     clearCurrent,
+    clearCharacterChat,
     removeMessage,
     editMessage,
     sendMessage,
