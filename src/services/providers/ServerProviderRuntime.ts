@@ -31,6 +31,25 @@ export const toSimpleChineseError = (message: string) => {
   return 'AI 服务暂时不可用，请稍后重试'
 }
 
+const extractMessageText = (value: unknown): string => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return value
+    try {
+      return extractMessageText(JSON.parse(trimmed))
+    } catch {
+      return value
+    }
+  }
+  if (value == null) return ''
+  if (Array.isArray(value)) return value.map(extractMessageText).filter(Boolean).join('\n')
+  if (typeof value === 'object') {
+    const message = value as { content?: unknown; text?: unknown; message?: unknown }
+    return extractMessageText(message.content) || extractMessageText(message.text) || extractMessageText(message.message)
+  }
+  return String(value)
+}
+
 const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs = options.timeoutMs) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -224,10 +243,11 @@ export const streamToClient = (upstream: Response, provider: RuntimeAIProvider) 
             continue
           }
           try {
-            const content = provider.extractContent(JSON.parse(payload))
+            const parsed = JSON.parse(payload)
+            const content = extractMessageText(provider.extractContent(parsed) || parsed)
             if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
           } catch {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: payload })}\n\n`))
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: extractMessageText(payload) })}\n\n`))
           }
         }
       }

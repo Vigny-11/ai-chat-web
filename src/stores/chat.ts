@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/app'
 import { useCharacterStore } from '@/stores/character'
 import type { ChatMessage, Conversation, Memory } from '@/types'
 import { createId, nowIso } from '@/utils/id'
+import { extractMessageText } from '@/utils/messageContent'
 
 export const useChatStore = defineStore('chat', () => {
   const conversations = ref<Conversation[]>([])
@@ -122,12 +123,12 @@ export const useChatStore = defineStore('chat', () => {
         signal: controller.signal,
       })) {
         if (chunk.done) break
-        final += chunk.content
+        final += extractMessageText(chunk.content)
         assistantMsg.content = final
         assistantMsg.updatedAt = nowIso()
       }
       assistantMsg.isGenerating = false
-      assistantMsg.content = final || '我暂时不知道该如何回答。'
+      assistantMsg.content = extractMessageText(final) || '我暂时不知道该如何回答。'
       await db.messages.put({ ...assistantMsg, updatedAt: nowIso() })
       await db.conversations.update(conversationId, { updatedAt: nowIso(), lastMessageAt: nowIso(), title: conversations.value.find((c) => c.id === conversationId)?.title ?? content.slice(0, 18) })
       await maybeExtractMemory(character.id, conversationId, assistantMsg)

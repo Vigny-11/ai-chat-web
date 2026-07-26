@@ -1,4 +1,5 @@
 import type { ChatChunk, SenderRole, TestResult } from '@/types'
+import { extractMessageText } from '@/utils/messageContent'
 
 export interface ProviderTestResult extends TestResult {
   providerId?: string
@@ -49,9 +50,10 @@ export async function* readProxyStream(response: Response): AsyncGenerator<ChatC
         continue
       }
       try {
-        yield JSON.parse(payload) as ChatChunk
+        const parsed = JSON.parse(payload) as ChatChunk | Record<string, unknown>
+        yield { content: extractMessageText(parsed), done: Boolean((parsed as ChatChunk).done) }
       } catch {
-        yield { content: payload }
+        yield { content: extractMessageText(payload) }
       }
     }
   }
