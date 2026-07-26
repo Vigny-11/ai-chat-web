@@ -58,6 +58,7 @@ export interface CharacterBackground {
 export interface WorldSetting extends BaseEntity {
   characterId: string
   name?: string
+  description?: string
   era?: string
   type?: string
   places?: string
@@ -72,6 +73,7 @@ export interface WorldSetting extends BaseEntity {
 
 export interface Character extends BaseEntity {
   name: string
+  characterName?: string
   nickname?: string
   gender?: string
   age?: string
@@ -84,6 +86,13 @@ export interface Character extends BaseEntity {
   userCallCharacter?: string
   personality: CharacterPersonality
   background: CharacterBackground
+  worldSetting?: string
+  characterDescription?: string
+  backgroundStory?: string
+  likes?: string
+  dislikes?: string
+  speakingStyle?: string
+  aiSystemPrompt?: string
   activeOutfitId?: string
   avatarImageId?: string
 }
@@ -101,6 +110,10 @@ export interface CharacterImage extends BaseEntity {
 export interface Outfit extends BaseEntity {
   characterId: string
   name: string
+  image?: string
+  description?: string
+  background?: string
+  current?: boolean
   imageDataUrl?: string
   mimeType?: string
   type?: string
