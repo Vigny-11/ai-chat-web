@@ -53,6 +53,44 @@ const extractMessageText = (value: unknown): string => {
   return String(value)
 }
 
+export const extractAIContent = (response: unknown): string => {
+  if (typeof response === 'string') {
+    const trimmed = response.trim()
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return response
+    try {
+      return extractAIContent(JSON.parse(trimmed))
+    } catch {
+      return response
+    }
+  }
+  if (response == null) return ''
+  if (Array.isArray(response)) return response.map(extractAIContent).filter(Boolean).join('\n')
+  if (typeof response === 'object') {
+    const payload = response as {
+      choices?: Array<{ message?: unknown; delta?: unknown; text?: unknown }>
+      content?: unknown
+      message?: unknown
+      delta?: unknown
+      candidates?: Array<{ content?: { parts?: Array<{ text?: unknown }> } }>
+      parts?: Array<{ text?: unknown }>
+    }
+    const openAI = payload.choices?.map((choice) => extractAIContent(choice.message ?? choice.delta ?? choice.text)).filter(Boolean).join('\n')
+    if (openAI) return openAI
+    const anthropic = Array.isArray(payload.content) ? payload.content.map(extractAIContent).filter(Boolean).join('\n') : ''
+    if (anthropic) return anthropic
+    const gemini = payload.candidates
+      ?.flatMap((candidate) => candidate.content?.parts ?? [])
+      .map((part) => extractAIContent(part.text))
+      .filter(Boolean)
+      .join('\n')
+    if (gemini) return gemini
+    const parts = payload.parts?.map((part) => extractAIContent(part.text)).filter(Boolean).join('\n')
+    if (parts) return parts
+    return extractAIContent(payload.content) || extractAIContent(payload.message) || extractAIContent(payload.delta) || extractMessageText(payload)
+  }
+  return String(response)
+}
+
 const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs = options.timeoutMs) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -98,7 +136,7 @@ class OpenAIProvider implements RuntimeAIProvider {
   }
 
   extractContent(payload: any) {
-    return payload?.choices?.[0]?.delta?.content ?? payload?.choices?.[0]?.message?.content ?? ''
+    return extractAIContent(payload?.choices?.[0]?.delta ?? payload?.choices?.[0]?.message ?? payload)
   }
 }
 
@@ -153,7 +191,7 @@ class AnthropicProvider implements RuntimeAIProvider {
   }
 
   extractContent(payload: any) {
-    return payload?.delta?.text ?? payload?.content?.[0]?.text ?? ''
+    return extractAIContent(payload?.delta ?? payload?.content ?? payload)
   }
 }
 
@@ -187,7 +225,7 @@ class GeminiProvider implements RuntimeAIProvider {
   }
 
   extractContent(payload: any) {
-    return payload?.candidates?.[0]?.content?.parts?.map((part: any) => part.text ?? '').join('') ?? ''
+    return extractAIContent(payload?.candidates ?? payload)
   }
 }
 
@@ -229,6 +267,7 @@ export const streamToClient = (upstream: Response, provider: RuntimeAIProvider) 
   return new ReadableStream({
     async start(controller) {
       const reader = upstream.body?.getReader()
+      let buffer = ''
       if (!reader) {
         controller.enqueue(encoder.encode('data: {"content":"AI 服务暂时不可用，请稍后重试"}\n\n'))
         controller.close()
@@ -237,8 +276,10 @@ export const streamToClient = (upstream: Response, provider: RuntimeAIProvider) 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        const text = decoder.decode(value)
-        for (const line of text.split('\n')) {
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
           if (!line.startsWith('data:')) continue
           const payload = line.slice(5).trim()
           if (!payload || payload === '[DONE]') {
@@ -247,11 +288,19 @@ export const streamToClient = (upstream: Response, provider: RuntimeAIProvider) 
           }
           try {
             const parsed = JSON.parse(payload)
-            const content = extractMessageText(provider.extractContent(parsed) || parsed)
+            const content = extractAIContent(provider.extractContent(parsed) || parsed)
             if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
           } catch {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: extractMessageText(payload) })}\n\n`))
+            const content = extractAIContent(payload)
+            if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
           }
+        }
+      }
+      if (buffer.trim()) {
+        const payload = buffer.startsWith('data:') ? buffer.slice(5).trim() : buffer.trim()
+        if (payload && payload !== '[DONE]') {
+          const content = extractAIContent(payload)
+          if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
         }
       }
       controller.close()

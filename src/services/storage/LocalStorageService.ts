@@ -1,7 +1,7 @@
 import JSZip from 'jszip'
 import { db, ensureDefaults } from '@/database/db'
 import type { BackupData, Character, ChatMessage, Conversation, DataStorage, LocalDataStats, Memory, ServerSyncConfig } from '@/types'
-import { extractMessageText } from '@/utils/messageContent'
+import { extractAIContent } from '@/utils/messageContent'
 
 const BACKUP_VERSION = '1.1.0'
 
@@ -13,7 +13,7 @@ const normalizeBackupMessages = (messages: ChatMessage[] = [], conversations: Co
     .map((raw) => {
       const message = raw as ChatMessage & { text?: unknown; message?: unknown }
       const characterId = message.characterId || characterByConversation.get(message.conversationId)
-      const content = extractMessageText(message.content ?? message.text ?? message.message ?? message)
+      const content = extractAIContent(message.content ?? message.text ?? message.message ?? message)
       if (!characterId || !content) return null
       return { ...message, characterId, content }
     })

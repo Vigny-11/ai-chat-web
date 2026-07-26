@@ -1,5 +1,5 @@
 import type { ChatChunk, SenderRole, TestResult } from '@/types'
-import { extractMessageText } from '@/utils/messageContent'
+import { extractAIContent } from '@/utils/messageContent'
 
 export interface ProviderTestResult extends TestResult {
   providerId?: string
@@ -47,7 +47,7 @@ export async function* readProxyStream(response: Response): AsyncGenerator<ChatC
         if (payload === '[DONE]') {
           yield { content: '', done: true }
         } else {
-          const content = extractMessageText(payload)
+          const content = extractAIContent(payload)
           if (content) yield { content }
         }
       }
@@ -65,9 +65,9 @@ export async function* readProxyStream(response: Response): AsyncGenerator<ChatC
       }
       try {
         const parsed = JSON.parse(payload) as ChatChunk | Record<string, unknown>
-        yield { content: extractMessageText(parsed), done: Boolean((parsed as ChatChunk).done) }
+        yield { content: extractAIContent(parsed), done: Boolean((parsed as ChatChunk).done) }
       } catch {
-        yield { content: extractMessageText(payload) }
+        yield { content: extractAIContent(payload) }
       }
     }
   }

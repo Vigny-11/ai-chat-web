@@ -8,7 +8,7 @@ import { useAppStore } from '@/stores/app'
 import { useCharacterStore } from '@/stores/character'
 import type { ChatMessage, Conversation, Memory } from '@/types'
 import { createId, nowIso } from '@/utils/id'
-import { extractMessageText } from '@/utils/messageContent'
+import { extractAIContent, extractMessageText } from '@/utils/messageContent'
 
 type RawChatMessage = Partial<ChatMessage> & {
   text?: unknown
@@ -27,7 +27,7 @@ export const useChatStore = defineStore('chat', () => {
 
   const normalizeMessage = (message: RawChatMessage | unknown, fallbackCharacterId = '', fallbackConversationId = ''): ChatMessage | null => {
     const raw = typeof message === 'object' && message ? (message as RawChatMessage) : ({ content: message } as RawChatMessage)
-    const content = extractMessageText(raw.content ?? raw.text ?? raw.message ?? raw.choices ?? raw)
+    const content = extractAIContent(raw.content ?? raw.text ?? raw.message ?? raw.choices ?? raw)
     const characterId = raw.characterId || fallbackCharacterId
     const conversationId = raw.conversationId || fallbackConversationId
     const role = raw.role === 'system' || raw.role === 'user' || raw.role === 'assistant' ? raw.role : 'assistant'
@@ -210,12 +210,16 @@ export const useChatStore = defineStore('chat', () => {
         signal: controller.signal,
       })) {
         if (chunk.done) break
-        final += extractMessageText(chunk.content)
+        console.log('AI RAW RESPONSE:', chunk.content)
+        const chunkContent = extractAIContent(chunk.content)
+        console.log('FINAL CONTENT:', chunkContent)
+        final += chunkContent
         assistantMsg.content = final
         assistantMsg.updatedAt = nowIso()
       }
       assistantMsg.isGenerating = false
-      assistantMsg.content = extractMessageText(final) || '我暂时不知道该如何回答。'
+      assistantMsg.content = extractAIContent(final) || '我暂时不知道该如何回答。'
+      console.log('FINAL CONTENT:', assistantMsg.content)
       const savedAssistant = normalizeMessage({ ...assistantMsg, updatedAt: nowIso() }, character.id, conversationId)
       if (savedAssistant) await db.messages.put(savedAssistant)
       await db.conversations.update(conversationId, { updatedAt: nowIso(), lastMessageAt: nowIso(), title: conversations.value.find((c) => c.id === conversationId)?.title ?? content.slice(0, 18) })
