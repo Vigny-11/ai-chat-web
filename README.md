@@ -30,7 +30,7 @@ npm install
 npm run dev
 ```
 
-该命令会同时启动 Vue 前端和本地 Express 代理。默认前端地址通常为 `http://127.0.0.1:5173`，代理地址为 `http://127.0.0.1:8787`。
+该命令会启动 Vue 前端。部署到 Cloudflare Pages 后，接口由 `functions/api/` 下的 Pages Functions 提供，前端统一请求 `/api/test` 和 `/api/chat`。
 
 ## 构建方法
 
