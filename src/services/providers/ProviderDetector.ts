@@ -22,12 +22,20 @@ export class ProviderDetector {
   async detect(apiKey: string): Promise<ProviderTestResult> {
     try {
       const response = await proxyPost('/api/test', { apiKey })
-      const data = (await response.json()) as { success?: boolean; provider?: string; message?: string }
+      const data = (await response.json()) as {
+        ok?: boolean
+        success?: boolean
+        provider?: string
+        providerId?: string
+        providerName?: string
+        message?: string
+      }
+      const connected = Boolean(data.success ?? data.ok)
       return {
-        ok: Boolean(data.success),
-        message: data.success ? '连接成功，可以开始创建角色' : data.message ?? 'AI 服务暂时不可用，请稍后重试',
-        providerId: data.provider,
-        providerName: data.provider,
+        ok: connected,
+        message: connected ? '连接成功，可以开始创建角色' : data.message ?? 'AI 服务暂时不可用，请稍后重试',
+        providerId: data.provider ?? data.providerId,
+        providerName: data.providerName ?? data.provider ?? data.providerId,
       }
     } catch (error) {
       return { ok: false, message: parseUserFriendlyError(error instanceof Error ? error.message : String(error)) }

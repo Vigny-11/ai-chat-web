@@ -14,11 +14,11 @@ export const useAppStore = defineStore('app', () => {
   const syncConfig = ref<ServerSyncConfig | null>(null)
   const sessionApiKey = ref(sessionStorage.getItem(API_KEY_SESSION) || '')
   const detectedProviderId = ref(sessionStorage.getItem(PROVIDER_SESSION) || '')
-  const connectionTested = ref(false)
+  const apiConnected = ref(false)
 
   const apiKey = computed(() => sessionApiKey.value || globalAIConfig.value?.apiKey || '')
   const hasApiKey = computed(() => Boolean(apiKey.value.trim()))
-  const canUseApi = computed(() => hasApiKey.value && connectionTested.value)
+  const canUseApi = computed(() => hasApiKey.value && apiConnected.value)
   const aiStatusText = computed(() => (canUseApi.value ? '已连接' : '未连接'))
   const maskedApiKey = computed(() => maskApiKey(apiKey.value))
 
@@ -27,7 +27,7 @@ export const useAppStore = defineStore('app', () => {
     globalAIConfig.value = (await db.globalAIConfigs.get('global')) ?? null
     preference.value = (await db.preferences.get('default')) ?? null
     syncConfig.value = (await db.syncConfigs.get('default')) ?? null
-    connectionTested.value = hasApiKey.value
+    apiConnected.value = hasApiKey.value
     applyTheme()
     ready.value = true
   }
@@ -52,9 +52,12 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  const markConnectionTested = (tested: boolean) => {
-    connectionTested.value = tested
+  const markApiConnected = (connected: boolean) => {
+    apiConnected.value = connected
+    console.log(connected ? 'apiConnected = true' : 'apiConnected = false')
   }
+
+  const markConnectionTested = markApiConnected
 
   const setDetectedProvider = (providerId?: string) => {
     detectedProviderId.value = providerId ?? ''
@@ -64,7 +67,7 @@ export const useAppStore = defineStore('app', () => {
 
   const clearApiKey = async () => {
     sessionApiKey.value = ''
-    connectionTested.value = false
+    apiConnected.value = false
     sessionStorage.removeItem(API_KEY_SESSION)
     sessionStorage.removeItem(PROVIDER_SESSION)
     await db.globalAIConfigs.delete('global')
@@ -102,9 +105,11 @@ export const useAppStore = defineStore('app', () => {
     aiStatusText,
     maskedApiKey,
     detectedProviderId,
-    connectionTested,
+    apiConnected,
+    connectionTested: apiConnected,
     load,
     saveGlobalApiKey,
+    markApiConnected,
     markConnectionTested,
     setDetectedProvider,
     clearApiKey,

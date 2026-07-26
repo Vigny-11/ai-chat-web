@@ -6,7 +6,6 @@ import { useAppStore } from '@/stores/app'
 const app = useAppStore()
 const router = useRouter()
 onMounted(app.load)
-
 </script>
 
 <template>
