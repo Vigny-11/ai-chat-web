@@ -19,6 +19,14 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref('')
   let controller: AbortController | null = null
 
+  const normalizeMessage = (message: ChatMessage): ChatMessage => {
+    const content = extractMessageText(message.content)
+    return {
+      ...message,
+      content: content || (typeof message.content === 'string' ? message.content : ''),
+    }
+  }
+
   const loadForCharacter = async (characterId: string) => {
     conversations.value = await db.conversations.where('characterId').equals(characterId).reverse().sortBy('updatedAt')
     memories.value = await db.memories.where('characterId').equals(characterId).toArray()
@@ -28,7 +36,7 @@ export const useChatStore = defineStore('chat', () => {
 
   const loadMessages = async (conversationId: string) => {
     activeConversationId.value = conversationId
-    messages.value = await db.messages.where('conversationId').equals(conversationId).sortBy('createdAt')
+    messages.value = (await db.messages.where('conversationId').equals(conversationId).sortBy('createdAt')).map(normalizeMessage)
   }
 
   const newConversation = async (characterId: string) => {
@@ -72,7 +80,7 @@ export const useChatStore = defineStore('chat', () => {
   const editMessage = async (id: string, content: string) => {
     const msg = await db.messages.get(id)
     if (!msg) return
-    await db.messages.put({ ...msg, content, isEdited: true, updatedAt: nowIso() })
+    await db.messages.put({ ...msg, content: extractMessageText(content) || content, isEdited: true, updatedAt: nowIso() })
     await loadMessages(msg.conversationId)
   }
 
@@ -86,11 +94,12 @@ export const useChatStore = defineStore('chat', () => {
     let conversationId = activeConversationId.value
     if (!conversationId) conversationId = (await newConversation(character.id)).id
     const now = nowIso()
+    const userContent = extractMessageText(content) || content
     const userMsg: ChatMessage = {
       id: createId('msg'),
       conversationId,
       role: 'user',
-      content,
+      content: userContent,
       createdAt: now,
       updatedAt: now,
     }
@@ -113,13 +122,13 @@ export const useChatStore = defineStore('chat', () => {
       const world = charStore.worldFor(character.id)
       const outfit = charStore.outfitsFor(character.id).find((item) => item.id === character.activeOutfitId || item.isActive)
       const pinned = await db.memories.where('characterId').equals(character.id).filter((m) => m.pinned && m.enabled && m.allowAIUse).toArray()
-      const relevant = await findRelevantMemories(character.id, content, app.preference?.maxRelevantMemories ?? 8)
+      const relevant = await findRelevantMemories(character.id, userContent, app.preference?.maxRelevantMemories ?? 8)
       const system = buildCharacterSystemPrompt({ character, world, outfit, pinnedMemories: pinned, relevantMemories: relevant })
       let final = ''
       for await (const chunk of openAICompatibleProvider.chat({
         apiKey: app.apiKey,
         providerId: app.detectedProviderId,
-        messages: [{ role: 'system', content: system }, ...recent.map((m) => ({ role: m.role, content: m.content }))],
+        messages: [{ role: 'system', content: system }, ...recent.map((m) => ({ role: m.role, content: extractMessageText(m.content) || m.content }))],
         signal: controller.signal,
       })) {
         if (chunk.done) break

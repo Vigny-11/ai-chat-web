@@ -2,6 +2,8 @@ type UnknownMessage = {
   content?: unknown
   text?: unknown
   message?: unknown
+  delta?: unknown
+  choices?: unknown
 }
 
 const stringifyText = (value: unknown): string => {
@@ -31,7 +33,14 @@ export const extractMessageText = (value: unknown): string => {
 
   if (typeof value === 'object') {
     const message = value as UnknownMessage
-    return stringifyText(message.content) || stringifyText(message.text) || stringifyText(message.message)
+    const direct = stringifyText(message.content) || stringifyText(message.text) || stringifyText(message.message) || stringifyText(message.delta)
+    if (direct) return direct
+
+    if (Array.isArray(message.choices)) {
+      return message.choices.map(extractMessageText).filter(Boolean).join('\n')
+    }
+
+    return ''
   }
 
   return String(value)

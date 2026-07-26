@@ -6,6 +6,14 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 html {
   color-scheme: light;
 }
@@ -67,7 +75,7 @@ select {
 }
 
 .markdown pre {
-  @apply overflow-x-auto rounded-md bg-slate-950 p-3 text-sm text-slate-100;
+  @apply max-w-full overflow-x-auto rounded-md bg-slate-950 p-3 text-sm text-slate-100;
 }
 
 .markdown code {
@@ -76,4 +84,10 @@ select {
 
 .markdown pre code {
   @apply bg-transparent p-0;
+}
+
+.chat-bubble,
+.markdown {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
