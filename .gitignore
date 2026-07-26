@@ -12,3 +12,8 @@ Thumbs.db
 coverage
 dev*.log
 角色世界AI备份_*.zip
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
