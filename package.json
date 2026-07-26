@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "concurrently \"vite --host 127.0.0.1\" \"tsx watch server/index.ts\"",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1",
-    "typecheck": "vue-tsc --noEmit"
+    "preview": "npm run build && wrangler dev",
+    "typecheck": "vue-tsc --noEmit",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^5.2.4",
@@ -26,15 +27,17 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.47.0",
     "@types/cors": "^2.8.17",
+    "@types/dompurify": "^3.0.5",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.2",
-    "@types/dompurify": "^3.0.5",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
-    "vue-tsc": "^2.2.0"
+    "vue-tsc": "^2.2.0",
+    "wrangler": "^4.114.0"
   }
 }
