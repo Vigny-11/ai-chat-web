@@ -12,6 +12,7 @@ import type {
   WorldSetting,
 } from '@/types'
 import { createId, nowIso } from '@/utils/id'
+import { extractMessageText } from '@/utils/messageContent'
 
 export class RoleWorldDatabase extends Dexie {
   globalAIConfigs!: Table<GlobalAIConfig, string>
@@ -52,6 +53,46 @@ export class RoleWorldDatabase extends Dexie {
       preferences: 'id',
       syncConfigs: 'id',
     })
+    this.version(3)
+      .stores({
+        apiConfigs: null,
+        globalAIConfigs: 'id',
+        characters: 'id, name, updatedAt',
+        worlds: 'id, characterId',
+        images: 'id, characterId, kind',
+        outfits: 'id, characterId, isActive',
+        conversations: 'id, characterId, updatedAt',
+        messages: 'id, characterId, conversationId, role, createdAt',
+        memories: 'id, characterId, conversationId, type, pinned, enabled, allowAIUse, updatedAt',
+        preferences: 'id',
+        syncConfigs: 'id',
+      })
+      .upgrade(async (transaction) => {
+        const conversations = await transaction.table('conversations').toArray()
+        const characterByConversation = new Map<string, string>(conversations.map((item) => [item.id, item.characterId]))
+        const messageTable = transaction.table('messages')
+        const messages = await messageTable.toArray()
+
+        await Promise.all(
+          messages.map(async (raw) => {
+            const message = raw as ChatMessage & { text?: unknown; message?: unknown }
+            const characterId = message.characterId || characterByConversation.get(message.conversationId)
+            const content = extractMessageText(message.content ?? message.text ?? message.message ?? message)
+
+            if (!characterId || (!content && !message.isGenerating)) {
+              await messageTable.delete(message.id)
+              return
+            }
+
+            await messageTable.put({
+              ...message,
+              characterId,
+              content,
+              updatedAt: message.updatedAt || nowIso(),
+            })
+          }),
+        )
+      })
   }
 }
 

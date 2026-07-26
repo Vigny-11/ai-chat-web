@@ -1,10 +1,24 @@
 import JSZip from 'jszip'
 import { db, ensureDefaults } from '@/database/db'
 import type { BackupData, Character, ChatMessage, Conversation, DataStorage, LocalDataStats, Memory, ServerSyncConfig } from '@/types'
+import { extractMessageText } from '@/utils/messageContent'
 
 const BACKUP_VERSION = '1.1.0'
 
 const stripApiKey = (value: BackupData): BackupData => JSON.parse(JSON.stringify(value, (key, item) => (key.toLowerCase().includes('apikey') ? undefined : item))) as BackupData
+
+const normalizeBackupMessages = (messages: ChatMessage[] = [], conversations: Conversation[] = []) => {
+  const characterByConversation = new Map(conversations.map((conversation) => [conversation.id, conversation.characterId]))
+  return messages
+    .map((raw) => {
+      const message = raw as ChatMessage & { text?: unknown; message?: unknown }
+      const characterId = message.characterId || characterByConversation.get(message.conversationId)
+      const content = extractMessageText(message.content ?? message.text ?? message.message ?? message)
+      if (!characterId || !content) return null
+      return { ...message, characterId, content }
+    })
+    .filter((message): message is ChatMessage => Boolean(message))
+}
 
 export class LocalStorageService implements DataStorage {
   async saveCharacter(character: Character) {
@@ -24,7 +38,9 @@ export class LocalStorageService implements DataStorage {
   }
 
   async getMessages(conversationId: string) {
-    return db.messages.where('conversationId').equals(conversationId).sortBy('createdAt')
+    const conversation = await db.conversations.get(conversationId)
+    if (!conversation) return []
+    return (await db.messages.where('conversationId').equals(conversationId).sortBy('createdAt')).filter((message) => message.characterId === conversation.characterId)
   }
 
   async saveMemory(memory: Memory) {
@@ -36,6 +52,8 @@ export class LocalStorageService implements DataStorage {
   }
 
   async collectBackupData(): Promise<BackupData> {
+    const conversations = await db.conversations.toArray()
+    const messages = normalizeBackupMessages(await db.messages.toArray(), conversations)
     return stripApiKey({
       version: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
@@ -43,8 +61,8 @@ export class LocalStorageService implements DataStorage {
       images: await db.images.toArray(),
       outfits: await db.outfits.toArray(),
       worlds: await db.worlds.toArray(),
-      conversations: await db.conversations.toArray(),
-      messages: await db.messages.toArray(),
+      conversations,
+      messages,
       memories: await db.memories.toArray(),
       preferences: await db.preferences.toArray(),
     })
@@ -65,6 +83,7 @@ export class LocalStorageService implements DataStorage {
 
   async importData(backup: BackupData, mode: 'merge' | 'overwrite') {
     const safe = stripApiKey(backup)
+    const messages = normalizeBackupMessages(safe.messages ?? [], safe.conversations ?? [])
     await db.transaction('rw', [db.characters, db.images, db.outfits, db.worlds, db.conversations, db.messages, db.memories, db.preferences], async () => {
       if (mode === 'overwrite') {
         await Promise.all([db.characters.clear(), db.images.clear(), db.outfits.clear(), db.worlds.clear(), db.conversations.clear(), db.messages.clear(), db.memories.clear(), db.preferences.clear()])
@@ -74,7 +93,7 @@ export class LocalStorageService implements DataStorage {
       await db.outfits.bulkPut(safe.outfits ?? [])
       await db.worlds.bulkPut(safe.worlds ?? [])
       await db.conversations.bulkPut(safe.conversations ?? [])
-      await db.messages.bulkPut(safe.messages ?? [])
+      await db.messages.bulkPut(messages)
       await db.memories.bulkPut(safe.memories ?? [])
       await db.preferences.bulkPut(safe.preferences ?? [])
     })

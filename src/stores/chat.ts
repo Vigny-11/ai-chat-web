@@ -19,24 +19,47 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref('')
   let controller: AbortController | null = null
 
-  const normalizeMessage = (message: ChatMessage): ChatMessage => {
+  const normalizeMessage = (message: ChatMessage, fallbackCharacterId = ''): ChatMessage | null => {
     const content = extractMessageText(message.content)
+    const characterId = message.characterId || fallbackCharacterId
+    if (!characterId || (!content && !message.isGenerating)) return null
     return {
       ...message,
-      content: content || (typeof message.content === 'string' ? message.content : ''),
+      characterId,
+      content,
     }
   }
 
   const loadForCharacter = async (characterId: string) => {
     conversations.value = await db.conversations.where('characterId').equals(characterId).reverse().sortBy('updatedAt')
     memories.value = await db.memories.where('characterId').equals(characterId).toArray()
-    if (!activeConversationId.value && conversations.value[0]) activeConversationId.value = conversations.value[0].id
-    if (activeConversationId.value) await loadMessages(activeConversationId.value)
+    const currentBelongsToCharacter = conversations.value.some((conversation) => conversation.id === activeConversationId.value)
+    activeConversationId.value = currentBelongsToCharacter ? activeConversationId.value : conversations.value[0]?.id || ''
+    if (activeConversationId.value) await loadMessages(activeConversationId.value, characterId)
+    else messages.value = []
   }
 
-  const loadMessages = async (conversationId: string) => {
+  const loadMessages = async (conversationId: string, expectedCharacterId?: string) => {
+    const conversation = await db.conversations.get(conversationId)
+    if (!conversation || (expectedCharacterId && conversation.characterId !== expectedCharacterId)) {
+      activeConversationId.value = ''
+      messages.value = []
+      return
+    }
     activeConversationId.value = conversationId
-    messages.value = (await db.messages.where('conversationId').equals(conversationId).sortBy('createdAt')).map(normalizeMessage)
+    const loaded = await db.messages.where('conversationId').equals(conversationId).sortBy('createdAt')
+    const normalizedWithEmpty = loaded.map((message) => normalizeMessage(message, conversation.characterId))
+    const invalidIds = loaded
+      .filter((message, index) => !normalizedWithEmpty[index] || (message.characterId && message.characterId !== conversation.characterId))
+      .map((message) => message.id)
+    const normalized = normalizedWithEmpty
+      .filter((message): message is ChatMessage => Boolean(message))
+      .filter((message) => message.characterId === conversation.characterId)
+
+    if (invalidIds.length) await db.messages.bulkDelete(invalidIds)
+    const changed = normalized.length !== loaded.length || normalized.some((message, index) => message.content !== loaded[index]?.content || message.characterId !== loaded[index]?.characterId)
+    if (changed) await db.messages.bulkPut(normalized)
+    messages.value = normalized
   }
 
   const newConversation = async (characterId: string) => {
@@ -92,11 +115,14 @@ export const useChatStore = defineStore('chat', () => {
     const character = charStore.activeCharacter
     if (!character) throw new Error('请先选择角色。')
     let conversationId = activeConversationId.value
+    const activeConversation = conversationId ? await db.conversations.get(conversationId) : undefined
+    if (activeConversation && activeConversation.characterId !== character.id) conversationId = ''
     if (!conversationId) conversationId = (await newConversation(character.id)).id
     const now = nowIso()
     const userContent = extractMessageText(content) || content
     const userMsg: ChatMessage = {
       id: createId('msg'),
+      characterId: character.id,
       conversationId,
       role: 'user',
       content: userContent,
@@ -105,6 +131,7 @@ export const useChatStore = defineStore('chat', () => {
     }
     const assistantMsg: ChatMessage = {
       id: createId('msg'),
+      characterId: character.id,
       conversationId,
       role: 'assistant',
       content: '',

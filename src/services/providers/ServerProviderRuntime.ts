@@ -44,8 +44,11 @@ const extractMessageText = (value: unknown): string => {
   if (value == null) return ''
   if (Array.isArray(value)) return value.map(extractMessageText).filter(Boolean).join('\n')
   if (typeof value === 'object') {
-    const message = value as { content?: unknown; text?: unknown; message?: unknown }
-    return extractMessageText(message.content) || extractMessageText(message.text) || extractMessageText(message.message)
+    const message = value as { content?: unknown; text?: unknown; message?: unknown; delta?: unknown; choices?: unknown }
+    const direct = extractMessageText(message.content) || extractMessageText(message.text) || extractMessageText(message.message) || extractMessageText(message.delta)
+    if (direct) return direct
+    if (Array.isArray(message.choices)) return message.choices.map(extractMessageText).filter(Boolean).join('\n')
+    return ''
   }
   return String(value)
 }

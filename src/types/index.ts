@@ -133,6 +133,7 @@ export interface Conversation extends BaseEntity {
 }
 
 export interface ChatMessage extends BaseEntity {
+  characterId: string
   conversationId: string
   role: SenderRole
   content: string
