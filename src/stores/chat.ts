@@ -117,6 +117,7 @@ export const useChatStore = defineStore('chat', () => {
       let final = ''
       for await (const chunk of openAICompatibleProvider.chat({
         apiKey: app.apiKey,
+        providerId: app.detectedProviderId,
         messages: [{ role: 'system', content: system }, ...recent.map((m) => ({ role: m.role, content: m.content }))],
         signal: controller.signal,
       })) {
@@ -152,6 +153,7 @@ export const useChatStore = defineStore('chat', () => {
     if (all.length < app.preference.memoryInterval || all.length % app.preference.memoryInterval !== 0) return
     const candidates = await openAICompatibleProvider.extractMemories({
       apiKey: app.apiKey,
+      providerId: app.detectedProviderId,
       messages: all.slice(-app.preference.memoryInterval),
       character: charStore.activeCharacter,
     })

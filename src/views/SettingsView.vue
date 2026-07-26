@@ -23,10 +23,6 @@ onMounted(app.load)
       </p>
       <p v-if="app.maskedApiKey" class="mt-2 text-sm text-slate-500">当前 API Key：{{ app.maskedApiKey }}</p>
       <button class="btn-secondary mt-4" @click="router.push('/init/api')">修改 API Key</button>
-      <details class="mt-4 text-sm text-slate-500 dark:text-slate-400">
-        <summary class="cursor-pointer">高级 AI 设置</summary>
-        <p class="mt-2">当前版本隐藏开发者参数，后续可扩展自定义模型、自定义接口和参数调整。</p>
-      </details>
     </section>
 
     <section v-if="app.preference" class="panel mt-6 grid gap-4 rounded-md p-5">

@@ -48,7 +48,7 @@ npm run preview
 
 首次打开页面进入“AI 服务初始化页面”，只需要填写 API Key，然后点击“测试连接”。测试成功后点击“开始使用”进入角色创建页面。
 
-普通用户界面不会显示 Base URL、模型、Temperature、Top P、Token Limit 或请求路径。系统内部使用默认 AI 配置，并预留“高级 AI 设置”扩展入口。不要把 API Key 写入源码、`.env.example` 或 GitHub 仓库。
+普通用户界面不会显示 Base URL、模型、Temperature、Top P、Token Limit 或请求路径。系统会自动识别服务商并使用内置默认配置。不要把 API Key 写入源码、`.env.example` 或 GitHub 仓库。
 
 ## 数据保存位置
 

@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Eye, EyeOff, PlugZap } from 'lucide-vue-next'
-import { openAICompatibleProvider } from '@/services/aiProvider'
+import { detectedAIProvider } from '@/services/aiProvider'
 import { useAppStore } from '@/stores/app'
 
 const app = useAppStore()
@@ -15,13 +15,6 @@ const tested = ref(app.canUseApi)
 const result = ref('')
 const failed = ref(false)
 
-const normalizeError = (message: string) => {
-  if (/api key|401|无效/i.test(message)) return 'API Key 无效，请重新输入'
-  if (/网络|fetch|无法访问|连接/i.test(message)) return '网络连接失败，请检查网络'
-  if (/超时|timeout/i.test(message)) return 'AI 服务暂时不可用，请稍后重试'
-  return 'AI 服务暂时不可用，请稍后重试'
-}
-
 const testConnection = async () => {
   const key = apiKey.value.trim()
   if (!key) {
@@ -33,17 +26,19 @@ const testConnection = async () => {
   loading.value = true
   failed.value = false
   tested.value = false
-  const response = await openAICompatibleProvider.testConnection(key)
+  const response = await detectedAIProvider.testConnection(key)
   loading.value = false
   if (response.ok) {
     await app.saveGlobalApiKey(key, remember.value)
+    app.setDetectedProvider(response.providerId)
     app.markConnectionTested(true)
     tested.value = true
     result.value = '连接成功，可以开始创建角色'
   } else {
+    app.setDetectedProvider()
     app.markConnectionTested(false)
     failed.value = true
-    result.value = normalizeError(response.message)
+    result.value = response.message || 'AI 服务暂时不可用，请稍后重试'
   }
 }
 
@@ -98,11 +93,6 @@ const start = async () => {
           <button class="btn-primary" :disabled="!tested" @click="start">开始使用</button>
         </div>
       </div>
-
-      <details class="mt-6 text-sm text-slate-500 dark:text-slate-400">
-        <summary class="cursor-pointer">高级 AI 设置</summary>
-        <p class="mt-2">当前版本使用系统默认 AI 配置。未来可在这里加入自定义模型、自定义接口和参数调整。</p>
-      </details>
     </section>
   </main>
 </template>

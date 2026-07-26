@@ -5,6 +5,7 @@ import type { GlobalAIConfig, ServerSyncConfig, UserPreference } from '@/types'
 import { maskApiKey } from '@/utils/format'
 
 const API_KEY_SESSION = 'role_world_ai_session_key'
+const PROVIDER_SESSION = 'role_world_ai_provider'
 
 export const useAppStore = defineStore('app', () => {
   const ready = ref(false)
@@ -12,6 +13,7 @@ export const useAppStore = defineStore('app', () => {
   const preference = ref<UserPreference | null>(null)
   const syncConfig = ref<ServerSyncConfig | null>(null)
   const sessionApiKey = ref(sessionStorage.getItem(API_KEY_SESSION) || '')
+  const detectedProviderId = ref(sessionStorage.getItem(PROVIDER_SESSION) || '')
   const connectionTested = ref(false)
 
   const apiKey = computed(() => sessionApiKey.value || globalAIConfig.value?.apiKey || '')
@@ -54,10 +56,17 @@ export const useAppStore = defineStore('app', () => {
     connectionTested.value = tested
   }
 
+  const setDetectedProvider = (providerId?: string) => {
+    detectedProviderId.value = providerId ?? ''
+    if (providerId) sessionStorage.setItem(PROVIDER_SESSION, providerId)
+    else sessionStorage.removeItem(PROVIDER_SESSION)
+  }
+
   const clearApiKey = async () => {
     sessionApiKey.value = ''
     connectionTested.value = false
     sessionStorage.removeItem(API_KEY_SESSION)
+    sessionStorage.removeItem(PROVIDER_SESSION)
     await db.globalAIConfigs.delete('global')
     globalAIConfig.value = null
   }
@@ -92,10 +101,12 @@ export const useAppStore = defineStore('app', () => {
     canUseApi,
     aiStatusText,
     maskedApiKey,
+    detectedProviderId,
     connectionTested,
     load,
     saveGlobalApiKey,
     markConnectionTested,
+    setDetectedProvider,
     clearApiKey,
     savePreference,
     saveSyncConfig,

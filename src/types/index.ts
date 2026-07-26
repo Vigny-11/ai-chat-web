@@ -216,10 +216,13 @@ export interface DataStorage {
 export interface TestResult {
   ok: boolean
   message: string
+  providerId?: string
+  providerName?: string
 }
 
 export interface ChatRequest {
   apiKey: string
+  providerId?: string
   messages: Array<{ role: SenderRole; content: string }>
   signal?: AbortSignal
 }
@@ -238,6 +241,7 @@ export interface MemoryCandidate {
 
 export interface MemoryExtractRequest {
   apiKey: string
+  providerId?: string
   messages: ChatMessage[]
   character: Character
 }
